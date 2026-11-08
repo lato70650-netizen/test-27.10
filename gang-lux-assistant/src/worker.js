@@ -8,8 +8,8 @@ async function runQuestion(q,env,demo) {
  return ask(q,env,demo ? {cards:demoCards,select:demoSelect} : {});
 }
 export function telegramText(result,question) {
- const sources = result.sources.map(s=>`• ${s.title}${s.url ? `\n${s.url}` : ''}`).join('\n');
- return `${result.text}${result.degraded?'\n\nМодель недоступна; показана подходящая карточка из справочника.':''}${sources?'\n\n'+sources:''}${result.kind==='clarify'?'\n\nВопрос: '+question:''}`;
+ const sources = result.sources.map(s=>result.kind==='answer' && s.url ? `Источник: ${s.url}` : `• ${s.title}${s.url ? `\n${s.url}` : ''}`).join('\n');
+ return `${result.text}${sources?'\n\n'+sources:''}${result.kind==='clarify'?'\n\nВопрос: '+question:''}`;
 }
 export function telegramQuestion(message,env) {
  let q = message.text;

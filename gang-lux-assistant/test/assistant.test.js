@@ -160,3 +160,7 @@ test('category fallback distinguishes A from A1 and fails closed on ambiguous re
  assert.equal((await ask('со скольки лет категория A1',env,{cards:[a,a1],select:fail})).text,'A1');
  assert.equal((await ask('категория A или категория A1 со скольки лет',env,{cards:[a,a1],select:fail})).kind,'unavailable');
 });
+test('fallback answer shows source without technical model status',()=>{
+ const text=telegramText({kind:'answer',text:'Экзамен можно сдать с 18 лет.',degraded:true,sources:[{title:'Категория A',url:'https://www.notion.so/example'}]},'вопрос');
+ assert.match(text,/Экзамен можно сдать/);assert.match(text,/Источник: https:/);assert.doesNotMatch(text,/Модель|недоступна/);
+});
