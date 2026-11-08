@@ -1,0 +1,59 @@
+{
+  "mode": "Operate",
+  "brand": {
+    "name": "Ганг Люкс",
+    "provenance": "Inherited Notion brand documented in DESIGN.md",
+    "direction": "Navy and graphite with yellow accents; light reading surface and dark navigation",
+    "replacement": false
+  },
+  "sources": ["DESIGN.md", "public/style.css"],
+  "tokens": {
+    "colors": {
+      "navy": "#111c30",
+      "ink": "#18263b",
+      "muted": "#596575",
+      "paper": "#f6f7f9",
+      "line": "#dce1e8",
+      "gold": "#f4c64e",
+      "blue": "#254e85"
+    },
+    "fontFamily": ["Segoe UI", "Arial", "sans-serif"],
+    "bodyLineHeight": 1.55,
+    "radiiPx": {"panel": 12, "control": 6, "navigation": 7},
+    "focus": {"color": "#b27b00", "widthPx": 3, "offsetPx": 4},
+    "surfaces": {
+      "formAndAnswer": "#ffffff",
+      "emptyResult": "#eaf0f6",
+      "demoBanner": "#fff1c7",
+      "demoBannerText": "#694a0a",
+      "activeNavigation": "#28374e"
+    }
+  },
+  "surface": {
+    "purpose": "Daily internal staff questions answered from approved reference cards",
+    "primaryAction": "Найти ответ",
+    "desktop": {
+      "sidebarWidthPx": 260,
+      "headerHeightPx": 88,
+      "mainMaxWidthPx": 1250,
+      "mainPaddingPx": [54, 48, 35],
+      "contentColumns": "minmax(0,1.15fr) minmax(260px,.85fr)",
+      "contentGapPx": 34,
+      "resultPlacement": "Right of the question area",
+      "headingSizePx": 48
+    },
+    "responsive": [
+      {"query": "min-width:1500px", "mainPaddingTopPx": 75},
+      {"query": "max-width:1100px", "sidebarWidthPx": 220, "contentColumns": "1fr 1fr", "contentGapPx": 20, "headingSizePx": 42},
+      {"query": "max-width:800px", "navigation": "Horizontal top bar", "contentColumns": "1fr", "resultPlacement": "Below the question area and examples", "headingSizePx": 38, "mainPaddingPx": [32, 22, 20]},
+      {"query": "max-width:380px", "headingSizePx": 34, "mainPaddingPx": [28, 16]}
+    ],
+    "states": ["empty", "loading", "answer", "clarification", "not found", "access denied", "failure", "personal data"],
+    "constraints": ["Demo status visible before the question", "No web history", "No promotional blocks"],
+    "motion": {"loading": "1.3s ease-in-out infinite alternate background pulse", "reducedMotion": "Loading animation disabled"}
+  },
+  "verification": {
+    "matchesExistingCss": true,
+    "note": "Records existing values and documented product behavior; introduces no visual replacement or implementation change."
+  }
+}

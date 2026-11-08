@@ -1,0 +1,8 @@
+# Copy to .dev.vars. Demo works only on localhost; production rejects it.
+APP_MODE="demo"
+TELEGRAM_ALLOWED_IDS=""
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_WEBHOOK_SECRET=""
+NOTION_TOKEN=""
+OPENROUTER_API_KEY=""
+WEB_ALLOWED_EMAILS=""
