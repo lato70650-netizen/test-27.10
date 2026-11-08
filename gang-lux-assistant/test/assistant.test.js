@@ -177,3 +177,8 @@ test('Telegram formatting escapes untrusted text and preserves context',()=>{
  const t=telegramText({kind:'answer',text:'Экзамен с 18 лет. Для допуска нужен <документ> & проверка.',sources:[]},'q');
  assert.match(t,/<b>18 лет<\/b>/);assert.match(t,/\n\nДля допуска/);assert.match(t,/&lt;документ&gt; &amp; проверка/);assert.doesNotMatch(t,/<документ>/);
 });
+test('при ограничении провайдера пробует другую бесплатную модель',async()=>{
+ const models=[];
+ const result=await semanticSelect('Вопрос',[base],env,async(url,init)=>{const model=JSON.parse(init.body).model;models.push(model);if(models.length===1)return Response.json({error:{message:'provider busy'}},{status:429});return Response.json({choices:[{message:{content:'{"action":"answer","ids":["age"]}'}}]});});
+ assert.equal(result.action,'answer');assert.equal(models.length,2);assert.ok(models.every(m=>m.endsWith(':free')));
+});
