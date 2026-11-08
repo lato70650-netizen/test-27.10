@@ -4,17 +4,26 @@
   "main": "src/worker.js",
   "compatibility_date": "2026-11-08",
   "workers_dev": true,
-  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
-  "observability": { "enabled": true, "redact_query_string": true, "logs": { "invocation_logs": false }, "traces": { "enabled": false } },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": {
+      "invocation_logs": false
+    },
+    "traces": {
+      "enabled": false
+    }
+  },
   "vars": {
     "APP_MODE": "production",
     "OPENROUTER_MODEL": "google/gemma-4-26b-a4b-it:free",
-    "TELEGRAM_BOT_USERNAME": "",
-    "TELEGRAM_GROUP_ID": "",
-    "NOTION_DATA_SOURCE_ID": "",
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": "",
     "NOTION_QUESTION_PROPERTY": "Вопрос",
     "NOTION_STATUS_TYPE": "status"
-  }
+  },
+  "keep_vars": true
 }
