@@ -6,5 +6,6 @@ else fetch('/api/redeem',{method:'POST',headers:{'Content-Type':'application/jso
  if(!response.ok)throw new Error();
  const data=await response.json();status.textContent='Выберите, где задать вопрос:';
  const web=document.createElement('a');web.href='/';web.textContent='Открыть справочник';web.className='button';document.querySelector('main').append(web);
- const note=document.createElement('p');note.textContent='Для Telegram попросите владельца добавить вас в закрытую группу школы.';document.querySelector('main').append(note);
+ if(/^[A-Za-z0-9_]{5,32}$/.test(data.telegram_bot_username||'')){const tg=document.createElement('a');tg.href=`https://t.me/${data.telegram_bot_username}`;tg.textContent='Написать боту';tg.className='button';document.querySelector('main').append(tg);}
+ const note=document.createElement('p');note.textContent='Для общения с ботом попросите владельца добавить вас в закрытую группу школы.';document.querySelector('main').append(note);
 }).catch(()=>{status.textContent='Ссылка недействительна или доступ временно недоступен. Обратитесь к владельцу.';});

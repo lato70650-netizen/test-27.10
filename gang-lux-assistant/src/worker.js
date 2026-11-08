@@ -35,15 +35,32 @@ async function telegram(request,env) {
   if (!sent.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');
   return json({ok:true});
  }
- const groupAllowed = isGroup && /^-\d+$/.test(env.TELEGRAM_GROUP_ID || '') && String(message.chat.id) === env.TELEGRAM_GROUP_ID;
+ // Personal chats use Telegram group membership, queried for every request.
+ // The group is the source of access; no list or employee database is kept here.
+ const privateChat = message.chat.type === 'private' && message.chat.id === message.from.id;
+ if (!privateChat) return json({ok:true});
  const legacyAllowed = env.ACCESS_MODE === 'legacy' && telegramAccess(message,env);
- if (!groupAllowed && !legacyAllowed) return json({ok:true});
- if (groupAllowed) {
-  const command=commandTargetsBot && parsedCommand?.[1].toLowerCase() === 'ask' ? parsedCommand : null;
-  const isReply=message.reply_to_message?.from?.id === Number(env.TELEGRAM_BOT_TOKEN.split(':')[0]);
-  if (!command && !isReply) return json({ok:true});
-  if (command) message.text=message.text.slice(command[0].length).trim();
-  if (!message.text) return json({ok:true});
+ if (env.ACCESS_MODE === 'legacy' && !legacyAllowed) return json({ok:true});
+ if (!legacyAllowed) {
+  let authorized = false;
+  let verificationFailed = false;
+  if (!/^-\d+$/.test(env.TELEGRAM_GROUP_ID || '')) verificationFailed = true;
+  else try {
+   const member=await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getChatMember`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_GROUP_ID,user_id:message.from.id})});
+   if (!member.ok || typeof member.result?.status !== 'string') verificationFailed = true;
+   else authorized = ['creator','administrator','member'].includes(member.result.status) || (member.result.status === 'restricted' && member.result.is_member === true);
+  } catch { verificationFailed = true; }
+  if (!authorized) {
+   const text = verificationFailed ? 'Не удалось проверить доступ. Попросите владельца проверить настройки группы и права бота.' : 'Доступ только для сотрудников. Попросите владельца добавить вас в группу школы.';
+   const sent=await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:message.chat.id,text})});
+   if (!sent.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');
+   return json({ok:true});
+  }
+ }
+ if (/^\/start(?:\s|$)/i.test(message.text)) {
+  const sent=await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:message.chat.id,text:'Здравствуйте! Напишите ваш вопрос обычными словами.'})});
+  if (!sent.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');
+  return json({ok:true});
  }
  let result;
  try { result = await runQuestion(telegramQuestion(message,env),env,false); }
@@ -66,7 +83,7 @@ export default {
     if (request.headers.get('Origin') !== url.origin || !request.headers.get('Content-Type')?.startsWith('application/json')) return json({error:'FORBIDDEN'},403);
     const data = await boundedJSON(request,2048); const valid = await validSharedToken(data.token,env.ADMIN_SECRET);
     if (!valid) return json({error:'INVALID_LINK'},403);
-    return Response.json({ok:true},{headers:{...headers,'Set-Cookie':`__Host-gang_session=${data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=31536000`}});
+    return Response.json({ok:true,telegram_bot_username:env.TELEGRAM_BOT_USERNAME || ''},{headers:{...headers,'Set-Cookie':`__Host-gang_session=${data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=31536000`}});
    }
    if (url.pathname.startsWith('/admin/')) {
     const bearer=request.headers.get('Authorization') || '';

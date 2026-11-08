@@ -15,14 +15,17 @@ test('Worker link grants multiple web sessions without D1 and key rotation revok
  const cookie=first.headers.get('set-cookie');assert.match(cookie,/Secure; HttpOnly; SameSite=Strict/);assert.equal((await call('/api/session',{headers:{Cookie:cookie.split(';')[0]}})).status,200);
  env.ADMIN_SECRET=secret+'rotated';assert.equal((await call('/api/session',{headers:{Cookie:cookie.split(';')[0]}})).status,403);assert.equal((await call('/api/redeem',{method:'POST',headers,body})).status,403);
 });
-test('Telegram responds only to allowed group commands and replies, not other groups or private messages',async(t)=>{
- const {default:worker}=await import('../src/worker.js');const sent=[];let notion=0;
+test('Telegram personal chat accepts plain questions only from current group members',async(t)=>{
+ const {default:worker}=await import('../src/worker.js');const sent=[];let notion=0;let status='member';let isMember;let fail=false;
  const env={APP_MODE:'production',ADMIN_SECRET:secret,TELEGRAM_GROUP_ID:'-100123',TELEGRAM_BOT_USERNAME:'example_bot',TELEGRAM_WEBHOOK_SECRET:'test-webhook',TELEGRAM_BOT_TOKEN:'789:fake',NOTION_TOKEN:'fake',NOTION_DATA_SOURCE_ID:'fake'};
- t.mock.method(globalThis,'fetch',async(url,init)=>{if(String(url).includes('api.telegram.org')){sent.push(JSON.parse(init.body));return Response.json({ok:true});}if(String(url).includes('api.notion.com')){notion++;return Response.json({results:[],has_more:false});}assert.fail('unexpected upstream');});
- const send=async(chat,type,text,reply)=>worker.fetch(new Request('https://assistant.example/telegram/webhook',{method:'POST',headers:{'X-Telegram-Bot-Api-Secret-Token':'test-webhook'},body:JSON.stringify({message:{from:{id:123},chat:{id:chat,type},text,reply_to_message:reply}})}),env);
- await send(-100999,'supergroup','/ask Вопрос');await send(123,'private','/ask Вопрос');await send(-100123,'supergroup','Обычная беседа');await send(-100123,'supergroup','/ask@another_bot Вопрос');assert.equal(sent.length,0);assert.equal(notion,0);
- await send(-100123,'supergroup','/ask@example_bot Какой график?');assert.match(sent[0].text,/нет подтверждённого ответа/);assert.equal(notion,1);
- await send(-100123,'supergroup','Категория Б',{from:{id:789},text:'Уточните\n\nВопрос: Как проходят занятия?'});assert.equal(sent.length,2);
+ t.mock.method(globalThis,'fetch',async(url,init)=>{const u=String(url);if(u.endsWith('/getChatMember')){assert.deepEqual(JSON.parse(init.body),{chat_id:'-100123',user_id:123});if(fail)throw Error('unavailable');return Response.json({ok:true,result:{status,is_member:isMember}});}if(u.endsWith('/sendMessage')){sent.push(JSON.parse(init.body));return Response.json({ok:true});}if(u.includes('api.notion.com')){notion++;return Response.json({results:[],has_more:false});}assert.fail('unexpected upstream');});
+ const send=async(chat,type,text)=>worker.fetch(new Request('https://assistant.example/telegram/webhook',{method:'POST',headers:{'X-Telegram-Bot-Api-Secret-Token':'test-webhook'},body:JSON.stringify({message:{from:{id:123},chat:{id:chat,type},text}})}),env);
+ await send(-100123,'supergroup','/ask Вопрос');assert.equal(sent.length,0);assert.equal(notion,0);
+ await send(123,'private','Что входит в категорию A?');assert.match(sent.at(-1).text,/нет подтверждённого ответа/);assert.equal(notion,1);
+ for(const bad of ['left','kicked']){status=bad;await send(123,'private','Вопрос');assert.match(sent.at(-1).text,/Доступ только для сотрудников/);assert.equal(notion,1);}
+ status='restricted';isMember=false;await send(123,'private','Вопрос');assert.match(sent.at(-1).text,/Доступ только для сотрудников/);assert.equal(notion,1);
+ isMember=true;await send(123,'private','Вопрос');assert.equal(notion,2);
+ fail=true;await send(123,'private','Вопрос');assert.match(sent.at(-1).text,/Не удалось проверить доступ/);assert.equal(notion,2);
 });
 test('chatid bootstrap reveals only its own group ID and never calls Notion',async(t)=>{
  const {default:worker}=await import('../src/worker.js');let body;
