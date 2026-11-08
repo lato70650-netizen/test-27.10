@@ -87,8 +87,8 @@ test('веб-демо работает через настоящий HTTP handle
 test('ответ на уточнение Telegram сохраняет исходный вопрос без серверной истории',()=>{
  const q=telegramQuestion({text:'Категория B',reply_to_message:{from:{id:789},text:'Уточните\n\nВопрос: Как проходят занятия?'}},env);assert.ok(q.includes('Как проходят занятия?'));assert.ok(q.includes('Категория B'));
 });
-test('ответ Telegram включает утверждённый текст и источник',()=>{
- const t=telegramText({kind:'answer',text:base.answer,sources:[{title:base.question,url:base.url}]},'q');assert.ok(t.includes(base.answer));assert.ok(t.includes(base.url));
+test('ответ Telegram включает утверждённый текст без ссылки',()=>{
+ const t=telegramText({kind:'answer',text:base.answer,sources:[{title:base.question,url:base.url}]},'q');assert.ok(t.includes(base.answer));assert.ok(!t.includes(base.url));
 });
 test('ограничение размера применяется к телу без Content-Length',async()=>{
  await assert.rejects(boundedJSON(new Response('x'.repeat(100)),20),/PAYLOAD_TOO_LARGE/);
@@ -130,7 +130,7 @@ test('оба входа возвращают один утверждённый �
  const web=await worker.fetch(new Request('https://assistant.example.org/api/ask',{method:'POST',headers:{'Cf-Access-Jwt-Assertion':token,Origin:'https://assistant.example.org','Content-Type':'application/json'},body:JSON.stringify({question:'А в 17 уже можно записаться?'})}),liveEnv);
  assert.equal(web.status,200);const webResult=await web.json();
  const telegram=await worker.fetch(new Request('https://assistant.example.org/telegram/webhook',{method:'POST',headers:{'X-Telegram-Bot-Api-Secret-Token':'fake-webhook'},body:JSON.stringify({update_id:1,message:{from:{id:123},chat:{id:123,type:'private'},text:'А в 17 уже можно записаться?'}})}),liveEnv);
- assert.equal(telegram.status,200);assert.ok(sent.text.includes(webResult.text));assert.ok(sent.text.includes(webResult.sources[0].url));
+ assert.equal(telegram.status,200);assert.ok(sent.text.includes(webResult.text));assert.ok(!sent.text.includes(webResult.sources[0].url));
 });
 test('model failure: explicit category and age retrieves only the matching approved card',async()=>{
  const a={...base,id:'cat-a',question:'Какие требования и какой транспорт относятся к категории A?',aliases:'Категория A',answer:'Мотоциклы. Экзамен с 18 лет.'};
@@ -160,7 +160,20 @@ test('category fallback distinguishes A from A1 and fails closed on ambiguous re
  assert.equal((await ask('со скольки лет категория A1',env,{cards:[a,a1],select:fail})).text,'A1');
  assert.equal((await ask('категория A или категория A1 со скольки лет',env,{cards:[a,a1],select:fail})).kind,'unavailable');
 });
-test('fallback answer shows source without technical model status',()=>{
+test('fallback answer is concise and has no source or technical model status',()=>{
  const text=telegramText({kind:'answer',text:'Экзамен можно сдать с 18 лет.',degraded:true,sources:[{title:'Категория A',url:'https://www.notion.so/example'}]},'вопрос');
- assert.match(text,/Экзамен можно сдать/);assert.match(text,/Источник: https:/);assert.doesNotMatch(text,/Модель|недоступна/);
+ assert.match(text,/Экзамен можно сдать/);assert.doesNotMatch(text,/Источник|https:|Модель|недоступна/);
+});
+test('focused category A age question returns approved first sentence, without inventing an enrolment age',async()=>{
+ const a={...base,id:'category-a',question:'Какие требования и какой транспорт относятся к категории A?',aliases:'Категория A',answer:'Экзамен на категорию A можно сдать с 18 лет, тогда же можно получить права. Категория A — это мотоциклы. Когда можно записаться, уточните у старшего администратора.'};
+ const q='со скольки лет можно учиться на кат.А?';
+ const found=await ask(q,env,{cards:[a],select:async()=>({action:'answer',ids:['category-a']})});
+ const fallback=await ask(q,env,{cards:[a],select:fail});
+ assert.equal(found.text,'Экзамен на категорию A можно сдать с 18 лет, тогда же можно получить права.');assert.equal(fallback.text,found.text);
+ const t=telegramText(found,q);assert.match(t,/<b>18 лет<\/b>/);assert.doesNotMatch(t,/Источник|https:/);
+ const mixed=await ask('Сколько лет нужно и когда можно записаться на категорию A?',env,{cards:[a],select:async()=>({action:'answer',ids:['category-a']})});assert.match(mixed.text,/уточните у старшего администратора/);
+});
+test('Telegram formatting escapes untrusted text and preserves context',()=>{
+ const t=telegramText({kind:'answer',text:'Экзамен с 18 лет. Для допуска нужен <документ> & проверка.',sources:[]},'q');
+ assert.match(t,/<b>18 лет<\/b>/);assert.match(t,/\n\nДля допуска/);assert.match(t,/&lt;документ&gt; &amp; проверка/);assert.doesNotMatch(t,/<документ>/);
 });

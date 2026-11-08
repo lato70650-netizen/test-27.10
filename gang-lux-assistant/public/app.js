@@ -6,9 +6,12 @@ let previous = ''; let busy = false;
 const titles = {answer:'Подсказка из справочника',clarify:'Давайте уточним',not_found:'Пока нет подтверждённого ответа',unavailable:'Поиск временно недоступен',privacy:'Уберите личные данные'};
 function node(tag,text,cls){const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;return el;}
 function show(data){
- result.replaceChildren(node('h2',titles[data.kind]||'Не удалось получить ответ'),node('p',data.text,'answer-text'));
+ const answer=node('p','','answer-text');
+ const parts=String(data.text||'').split(/(?<![\d–-])(\d{1,2}\s+(?:лет|года|год))(?![\p{L}])/gu);
+ for(let i=0;i<parts.length;i++)answer.append(i%2 ? node('strong',parts[i]) : document.createTextNode(parts[i]));
+ result.replaceChildren(node('h2',titles[data.kind]||'Не удалось получить ответ'),answer);
  result.className='result has-answer';
- if(data.sources?.length){const list=node('div','','source-list');list.append(node('p',data.kind==='clarify'?'Выберите тему или уточните вопрос:':'Источник ответа'));
+ if(data.kind==='clarify' && data.sources?.length){const list=node('div','','source-list');list.append(node('p',data.kind==='clarify'?'Выберите тему или уточните вопрос:':'Источник ответа'));
  for(const source of data.sources){
   let el;
   if(data.kind==='clarify'){el=node('button',source.title);el.type='button';el.addEventListener('click',()=>{input.value=source.title;previous='';updateCount();form.requestSubmit();});}

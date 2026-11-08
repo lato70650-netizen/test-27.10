@@ -7,9 +7,18 @@ const json = (data,status=200) => Response.json(data,{status,headers});
 async function runQuestion(q,env,demo) {
  return ask(q,env,demo ? {cards:demoCards,select:demoSelect} : {});
 }
+function escapeTelegramHtml(value) {
+ return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+}
 export function telegramText(result,question) {
- const sources = result.sources.map(s=>result.kind==='answer' && s.url ? `Источник: ${s.url}` : `• ${s.title}${s.url ? `\n${s.url}` : ''}`).join('\n');
- return `${result.text}${sources?'\n\n'+sources:''}${result.kind==='clarify'?'\n\nВопрос: '+question:''}`;
+ const paragraphs=String(result.text).replace(/([.!?])\s+(?=(?:Когда|На учебную|Для|При|Чтобы|Если|Важно)\s)/gu,'$1\n\n');
+ let body=escapeTelegramHtml(paragraphs);
+ if (result.kind === 'answer') {
+  body=body.replace(/(?<![\d–-])(\d{1,2}\s+(?:лет|года|год))(?![\p{L}])/gu,'<b>$1</b>');
+  if (/^Экзамен на категорию A\b/i.test(result.text)) body='🏍️ '+body;
+ }
+ const choices=result.kind==='clarify' ? result.sources.map(s=>`• ${escapeTelegramHtml(s.title)}`).join('\n') : '';
+ return `${body}${choices?'\n\n'+choices:''}${result.kind==='clarify'?'\n\nВопрос: '+escapeTelegramHtml(question):''}`;
 }
 export function telegramQuestion(message,env) {
  let q = message.text;
@@ -71,7 +80,7 @@ async function telegram(request,env) {
  let result;
  try { result = await runQuestion(telegramQuestion(message,env),env,false); }
  catch { result = {kind:'unavailable',text:'Справочник временно недоступен. Попробуйте позже или обратитесь к старшему администратору.',sources:[]}; }
- const body = {chat_id:message.chat.id,text:telegramText(result,message.text),link_preview_options:{is_disabled:true},...(Number.isSafeInteger(message.message_id)?{reply_parameters:{message_id:message.message_id}}:{}),...(result.kind==='clarify'?{reply_markup:{force_reply:true,selective:true}}:{})};
+ const body = {chat_id:message.chat.id,text:telegramText(result,message.text),parse_mode:'HTML',link_preview_options:{is_disabled:true},...(Number.isSafeInteger(message.message_id)?{reply_parameters:{message_id:message.message_id}}:{}),...(result.kind==='clarify'?{reply_markup:{force_reply:true,selective:true}}:{})};
  // Await send success before ACK so Telegram can retry failures. Duplicate delivery is possible.
  const sent = await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  if (!sent.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');

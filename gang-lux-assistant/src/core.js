@@ -75,7 +75,18 @@ export function explicitCategoryFallback(question,cards) {
  return matches.length===1?matches[0]:null;
 }
 const notFound = () => ({ kind: 'not_found', text: 'В утверждённом справочнике пока нет подтверждённого ответа. Пожалуйста, уточните у старшего администратора.', sources: [] });
-function answer(card, degraded = false) { return { kind: 'answer', text: card.answer, sources: [{ id: card.id, title: card.question, url: card.url }], degraded }; }
+// Keep the owner's short answer for a focused age question about category A.
+// Do not shorten questions that also ask about enrolment, documents or multiple topics.
+export function conciseAnswer(card,question) {
+ const ageQuestion = /скольк|возраст|(?:^|\s)лет(?:\s|[?.!,]|$)/iu.test(question);
+ const mixed = /(?:^|\s)(?:и|или)(?:\s|$)|запис|при[её]м|документ|цен|стоимост|расписан/iu.test(question);
+ if (ageQuestion && !mixed && /категории\s+A\s*\?$/i.test(card.question)) {
+  const first=card.answer.match(/^Экзамен на категорию A можно сдать с 18 лет, тогда же можно получить права\./);
+  if (first) return first[0];
+ }
+ return card.answer;
+}
+function answer(card, degraded = false, question = '') { return { kind: 'answer', text: conciseAnswer(card,question), sources: [{ id: card.id, title: card.question, url: card.url }], degraded }; }
 function clarify(cards) { return { kind: 'clarify', text: 'Уточните, пожалуйста, какая тема вам нужна?', sources: cards.slice(0,3).map(c=>({ id:c.id,title:c.question,url:c.url })) }; }
 export async function ask(question, env, { fetcher = fetch, cards: supplied, select } = {}) {
   if (typeof question !== 'string' || !question.trim() || question.length > 1200) throw new ServiceError('INVALID_QUESTION',400);
@@ -95,14 +106,14 @@ export async function ask(question, env, { fetcher = fetch, cards: supplied, sel
     const chosen = ids.map(id=>candidates.find(c=>c.id===id));
     if (decision.action === 'none' && ids.length === 0) return notFound();
     if (decision.action === 'clarify' && chosen.length >= 2 && chosen.length <= 3) return clarify(chosen);
-    if (decision.action === 'answer' && chosen.length === 1) return answer(chosen[0]);
+    if (decision.action === 'answer' && chosen.length === 1) return answer(chosen[0],false,question);
     throw new ServiceError('INVALID_MODEL_RESULT');
   } catch {
     const clear = ranked.filter(x=>x.exact);
-    if (clear.length === 1) return answer(clear[0].card,true);
+    if (clear.length === 1) return answer(clear[0].card,true,question);
     if (clear.length > 1) return { ...clarify(clear.map(x=>x.card)), degraded:true };
     const category=explicitCategoryFallback(question,cards);
-    if (category) return answer(category,true);
+    if (category) return answer(category,true,question);
     return { kind:'unavailable', text:'Сервис поиска временно недоступен. Попробуйте ещё раз или обратитесь к старшему администратору.', sources:[] };
   }
 }
