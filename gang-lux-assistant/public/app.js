@@ -16,7 +16,7 @@ function show(data){
   else el=node('span',source.title+' · демонстрация');
   list.append(el);
  }result.append(list);}
- if(data.degraded)result.append(node('p','Модель недоступна. Показано точное совпадение из справочника.','notice'));
+ if(data.degraded)result.append(node('p','Модель недоступна. Показана подходящая карточка из справочника.','notice'));
  if(data.kind==='clarify'){previous=input.value;input.placeholder='Уточните категорию или филиал';input.value='';updateCount();input.focus();}else previous='';
  if(innerWidth<800)result.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
 }

@@ -132,3 +132,31 @@ test('оба входа возвращают один утверждённый �
  const telegram=await worker.fetch(new Request('https://assistant.example.org/telegram/webhook',{method:'POST',headers:{'X-Telegram-Bot-Api-Secret-Token':'fake-webhook'},body:JSON.stringify({update_id:1,message:{from:{id:123},chat:{id:123,type:'private'},text:'А в 17 уже можно записаться?'}})}),liveEnv);
  assert.equal(telegram.status,200);assert.ok(sent.text.includes(webResult.text));assert.ok(sent.text.includes(webResult.sources[0].url));
 });
+test('model failure: explicit category and age retrieves only the matching approved card',async()=>{
+ const a={...base,id:'cat-a',question:'Какие требования и какой транспорт относятся к категории A?',aliases:'Категория A',answer:'Мотоциклы. Экзамен с 18 лет.'};
+ const b={...base,id:'cat-b',question:'Какие требования и какой транспорт относятся к категории B?',aliases:'Категория B',answer:'Автомобили.'};
+ const result=await ask('со скольки лет можно учиться на кат.А',env,{cards:[a,b],select:fail});
+ assert.equal(result.kind,'answer');assert.equal(result.text,a.answer);assert.equal(result.degraded,true);
+ for(const q of ['сколько стоит обучение на кат.А','есть ли запись на кат.А','что входит в кат.А или кат.B'])assert.equal((await ask(q,env,{cards:[a,b],select:fail})).kind,'unavailable');
+});
+test('model JSON in a code fence is accepted while IDs remain checked',async()=>{
+ const result=await semanticSelect('Вопрос', [base],env,async()=>Response.json({choices:[{message:{content:['```json','{"action":"answer","ids":["age"]}','```'].join('\n')}}]}));
+ assert.equal(result.action,'answer');assert.deepEqual(result.ids,['age']);
+});
+test('model diagnostic reports safe HTTP status and never returns provider response or credential',async()=>{
+ const {diagnoseModel}=await import('../src/core.js');
+ let body;
+ const result=await diagnoseModel(env,async(url,init)=>{body=JSON.parse(init.body);return new Response('secret provider text',{status:429});});
+ assert.deepEqual(result,{ok:false,http_status:429,reason:'provider_error'});assert.equal(JSON.stringify(result).includes('secret'),false);assert.equal(body.messages[1].content.includes(base.answer),false);
+});
+test('model diagnostic distinguishes malformed output and missing configuration',async()=>{
+ const {diagnoseModel}=await import('../src/core.js');
+ assert.deepEqual(await diagnoseModel({...env,OPENROUTER_API_KEY:''}),{ok:false,http_status:null,reason:'not_configured'});
+ const r=await diagnoseModel(env,async()=>Response.json({choices:[{message:{content:'not json'}}]}));assert.deepEqual(r,{ok:false,http_status:200,reason:'invalid_format'});
+});
+test('category fallback distinguishes A from A1 and fails closed on ambiguous requests',async()=>{
+ const a={...base,id:'a',question:'Какие требования и какой транспорт относятся к категории A?',aliases:'A',answer:'A'};
+ const a1={...base,id:'a1',question:'Какие требования и какой транспорт относятся к категории A1?',aliases:'A1',answer:'A1'};
+ assert.equal((await ask('со скольки лет категория A1',env,{cards:[a,a1],select:fail})).text,'A1');
+ assert.equal((await ask('категория A или категория A1 со скольки лет',env,{cards:[a,a1],select:fail})).kind,'unavailable');
+});

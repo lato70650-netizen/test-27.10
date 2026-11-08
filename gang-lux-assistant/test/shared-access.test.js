@@ -55,3 +55,11 @@ test('owner can connect webhook without exposing token or overwriting an unrelat
  existing='';const result=await call(secret);assert.equal(result.status,200);assert.deepEqual(await result.json(),{ok:true,bot_username:'example_bot'});
  assert.equal(sent.url,'https://assistant.example/telegram/webhook');assert.equal(sent.secret_token,env.TELEGRAM_WEBHOOK_SECRET);assert.equal(setup,1);
 });
+test('model diagnostic endpoint is owner-only and discloses only safe result',async(t)=>{
+ const {default:worker}=await import('../src/worker.js');const key='test-openrouter-key';
+ const env={ADMIN_SECRET:secret,OPENROUTER_API_KEY:key,OPENROUTER_MODEL:'test/model:free'};
+ t.mock.method(globalThis,'fetch',async()=>new Response('sensitive error text',{status:429}));
+ const call=auth=>worker.fetch(new Request('https://assistant.example/admin/check-model',{headers:auth?{Authorization:`Bearer ${auth}`}:{}}),env);
+ assert.equal((await call()).status,403);const response=await call(secret);assert.equal(response.status,200);
+ const text=await response.text();assert.match(text,/429/);assert.equal(text.includes(key),false);assert.equal(text.includes('sensitive'),false);
+});

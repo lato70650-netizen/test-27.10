@@ -1,4 +1,4 @@
-import { ask, ServiceError, boundedJSON, apiJSON } from './core.js';
+import { ask, ServiceError, boundedJSON, apiJSON, diagnoseModel } from './core.js';
 import { localDemo, webAccess, telegramAccess, secretEqual } from './auth.js';
 import { demoCards, demoSelect } from './demo.js';
 import { sharedToken, validSharedToken } from './shared-access.js';
@@ -9,7 +9,7 @@ async function runQuestion(q,env,demo) {
 }
 export function telegramText(result,question) {
  const sources = result.sources.map(s=>`• ${s.title}${s.url ? `\n${s.url}` : ''}`).join('\n');
- return `${result.text}${result.degraded?'\n\nМодель недоступна; найдено точное совпадение в справочнике.':''}${sources?'\n\n'+sources:''}${result.kind==='clarify'?'\n\nВопрос: '+question:''}`;
+ return `${result.text}${result.degraded?'\n\nМодель недоступна; показана подходящая карточка из справочника.':''}${sources?'\n\n'+sources:''}${result.kind==='clarify'?'\n\nВопрос: '+question:''}`;
 }
 export function telegramQuestion(message,env) {
  let q = message.text;
@@ -94,6 +94,7 @@ export default {
    if (url.pathname.startsWith('/admin/')) {
     const bearer=request.headers.get('Authorization') || '';
     if (!env.ADMIN_SECRET || env.ADMIN_SECRET.length < 32 || !await secretEqual(bearer.startsWith('Bearer ') ? bearer.slice(7) : '',env.ADMIN_SECRET)) return json({error:'FORBIDDEN'},403);
+    if (request.method === 'GET' && url.pathname === '/admin/check-model') return json(await diagnoseModel(env));
     if (request.method === 'GET' && url.pathname === '/admin/shared-link') { const token=await sharedToken(env.ADMIN_SECRET); return token ? json({token}) : json({error:'NOT_CONFIGURED'},503); }
     if (request.method === 'POST' && url.pathname === '/admin/connect-telegram') {
      if (url.protocol !== 'https:' || request.headers.get('Origin') !== url.origin) return json({error:'FORBIDDEN'},403);
