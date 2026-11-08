@@ -72,6 +72,21 @@ export default {
     const bearer=request.headers.get('Authorization') || '';
     if (!env.ADMIN_SECRET || env.ADMIN_SECRET.length < 32 || !await secretEqual(bearer.startsWith('Bearer ') ? bearer.slice(7) : '',env.ADMIN_SECRET)) return json({error:'FORBIDDEN'},403);
     if (request.method === 'GET' && url.pathname === '/admin/shared-link') { const token=await sharedToken(env.ADMIN_SECRET); return token ? json({token}) : json({error:'NOT_CONFIGURED'},503); }
+    if (request.method === 'POST' && url.pathname === '/admin/connect-telegram') {
+     if (url.protocol !== 'https:' || request.headers.get('Origin') !== url.origin) return json({error:'FORBIDDEN'},403);
+     if (!env.TELEGRAM_BOT_TOKEN || !/^[A-Za-z0-9_-]{32,256}$/.test(env.TELEGRAM_WEBHOOK_SECRET || '')) return json({error:'NOT_CONFIGURED'},503);
+     const endpoint=`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/`;
+     const info=await apiJSON(endpoint+'getWebhookInfo',{});
+     if (!info.ok || typeof info.result?.url !== 'string') throw new ServiceError('UPSTREAM_UNAVAILABLE');
+     const target=new URL('/telegram/webhook',url.origin).href;
+     if (info.result.url && info.result.url !== target) return json({error:'WEBHOOK_IN_USE',message:'Бот уже подключён к другому сервису. Его настройки не изменены.'},409);
+     const me=await apiJSON(endpoint+'getMe',{});
+     if (!me.ok || !/^[A-Za-z0-9_]{5,32}$/.test(me.result?.username || '')) throw new ServiceError('UPSTREAM_UNAVAILABLE');
+     const result=await apiJSON(endpoint+'setWebhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:target,secret_token:env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message'],max_connections:1})});
+     if (!result.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');
+     return json({ok:true,bot_username:me.result.username});
+    }
+
     return json({error:'NOT_FOUND'},404);
    }
    const cookie=(request.headers.get('Cookie') || '').split(';').map(x=>x.trim()).find(x=>x.startsWith('__Host-gang_session='))?.slice('__Host-gang_session='.length);

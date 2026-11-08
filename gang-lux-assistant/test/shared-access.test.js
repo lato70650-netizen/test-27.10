@@ -35,3 +35,18 @@ test('bad origin or absent owner secret denies link login',async()=>{
  assert.equal((await worker.fetch(request('https://evil.example'),{ADMIN_SECRET:secret})).status,403);
  assert.equal((await worker.fetch(request('https://assistant.example'),{})).status,403);
 });
+test('owner can connect webhook without exposing token or overwriting an unrelated webhook',async(t)=>{
+ const {default:worker}=await import('../src/worker.js');let existing='';let setup=0;let sent;
+ t.mock.method(globalThis,'fetch',async(url,init)=>{
+  const u=String(url);if(u.endsWith('/getWebhookInfo'))return Response.json({ok:true,result:{url:existing}});
+  if(u.endsWith('/getMe'))return Response.json({ok:true,result:{username:'example_bot'}});
+  if(u.endsWith('/setWebhook')){setup++;sent=JSON.parse(init.body);return Response.json({ok:true,result:true});}
+  assert.fail('unexpected upstream');
+ });
+ const env={ADMIN_SECRET:secret,TELEGRAM_BOT_TOKEN:'123:fake',TELEGRAM_WEBHOOK_SECRET:'test-webhook-secret-32-characters-long'};
+ const call=(key,origin='https://assistant.example')=>worker.fetch(new Request('https://assistant.example/admin/connect-telegram',{method:'POST',headers:{Authorization:`Bearer ${key}`,Origin:origin}}),env);
+ assert.equal((await call('wrong')).status,403);assert.equal((await call(secret,'https://other.example')).status,403);assert.equal(setup,0);
+ existing='https://other-service.example/hook';assert.equal((await call(secret)).status,409);assert.equal(setup,0);
+ existing='';const result=await call(secret);assert.equal(result.status,200);assert.deepEqual(await result.json(),{ok:true,bot_username:'example_bot'});
+ assert.equal(sent.url,'https://assistant.example/telegram/webhook');assert.equal(sent.secret_token,env.TELEGRAM_WEBHOOK_SECRET);assert.equal(setup,1);
+});
