@@ -30,10 +30,16 @@ async function telegram(request,env) {
  const parsedCommand = /^\/(ask|chatid)(?:@([A-Za-z0-9_]+))?(?:\s+|$)/i.exec(message.text);
  const commandTargetsBot = !parsedCommand?.[2] || (env.TELEGRAM_BOT_USERNAME && parsedCommand[2].toLowerCase() === env.TELEGRAM_BOT_USERNAME.toLowerCase());
  const setupCommand = commandTargetsBot && parsedCommand?.[1].toLowerCase() === 'chatid';
- if (isGroup && setupCommand && (!env.TELEGRAM_GROUP_ID || String(message.chat.id) === env.TELEGRAM_GROUP_ID)) {
-  const sent=await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:message.chat.id,text:`ID этой группы: ${message.chat.id}`})});
-  if (!sent.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');
-  return json({ok:true});
+ if (isGroup && setupCommand) {
+  // Telegram can change the group ID during migration to a supergroup.
+  // Only a current group administrator may ask the bot to show that group's ID.
+  try {
+   const member=await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getChatMember`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:message.chat.id,user_id:message.from.id})});
+   if (!member.ok || !['creator','administrator'].includes(member.result?.status)) return json({ok:true});
+   const sent=await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:message.chat.id,text:`ID этой группы: ${message.chat.id}`})});
+   if (!sent.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');
+   return json({ok:true});
+  } catch { return json({ok:true}); }
  }
  // Personal chats use Telegram group membership, queried for every request.
  // The group is the source of access; no list or employee database is kept here.

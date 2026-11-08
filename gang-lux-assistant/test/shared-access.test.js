@@ -27,11 +27,13 @@ test('Telegram personal chat accepts plain questions only from current group mem
  isMember=true;await send(123,'private','Вопрос');assert.equal(notion,2);
  fail=true;await send(123,'private','Вопрос');assert.match(sent.at(-1).text,/Не удалось проверить доступ/);assert.equal(notion,2);
 });
-test('chatid bootstrap reveals only its own group ID and never calls Notion',async(t)=>{
- const {default:worker}=await import('../src/worker.js');let body;
- t.mock.method(globalThis,'fetch',async(url,init)=>{assert.ok(String(url).includes('api.telegram.org'));body=JSON.parse(init.body);return Response.json({ok:true});});
- const request=new Request('https://assistant.example/telegram/webhook',{method:'POST',headers:{'X-Telegram-Bot-Api-Secret-Token':'test-webhook'},body:JSON.stringify({message:{from:{id:123},chat:{id:-100456,type:'supergroup'},text:'/chatid'}})});
- const r=await worker.fetch(request,{TELEGRAM_WEBHOOK_SECRET:'test-webhook',TELEGRAM_BOT_TOKEN:'789:fake'});assert.equal(r.status,200);assert.match(body.text,/-100456/);
+test('administrator can recover new group ID after migration; ordinary member cannot',async(t)=>{
+ const {default:worker}=await import('../src/worker.js');let body;let role='administrator';
+ t.mock.method(globalThis,'fetch',async(url,init)=>{const u=String(url);if(u.endsWith('/getChatMember'))return Response.json({ok:true,result:{status:role}});if(u.endsWith('/sendMessage')){body=JSON.parse(init.body);return Response.json({ok:true});}assert.fail('unexpected upstream');});
+ const req=()=>new Request('https://assistant.example/telegram/webhook',{method:'POST',headers:{'X-Telegram-Bot-Api-Secret-Token':'test-webhook'},body:JSON.stringify({message:{from:{id:123},chat:{id:-100456,type:'supergroup'},text:'/chatid@example_bot'}})});
+ const env={TELEGRAM_WEBHOOK_SECRET:'test-webhook',TELEGRAM_BOT_TOKEN:'789:fake',TELEGRAM_GROUP_ID:'-100000',TELEGRAM_BOT_USERNAME:'example_bot'};
+ const r=await worker.fetch(req(),env);assert.equal(r.status,200);assert.match(body.text,/-100456/);
+ role='member';body=null;await worker.fetch(req(),env);assert.equal(body,null);
 });
 test('bad origin or absent owner secret denies link login',async()=>{
  const {default:worker}=await import('../src/worker.js');const token=await sharedToken(secret);const request=origin=>new Request('https://assistant.example/api/redeem',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin},body:JSON.stringify({token})});
