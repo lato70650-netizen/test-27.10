@@ -7,3 +7,5 @@ Worker отвечает из утверждённых карточек Notion ч
 После развёртывания настройте секреты `ADMIN_SECRET`, `NOTION_TOKEN`, `OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, а также `NOTION_DATA_SOURCE_ID`, `TELEGRAM_GROUP_ID` и `TELEGRAM_BOT_USERNAME`. Ключ владельца — не менее 32 случайных символов. При отсутствии параметров доступ закрыт. Чтобы узнать ID группы, после настройки webhook отправьте `/chatid@имя_бота` в группе; скопируйте ID с минусом в переменную Cloudflare. Для изменения доступа к группе используйте настройки Telegram.
 
 Ответы хранятся только в Notion. Секреты, общую ссылку и идентификаторы приватных ресурсов не помещайте в репозиторий. Тесты: `npm test`; сборка без публикации: `npm run check`.
+
+При подключении Workers Builds используйте ветку `gang-lux-assistant` и корневую папку `gang-lux-assistant`. Секреты Worker сохраняются при развёртывании; параметры окружения задаются в Cloudflare.
