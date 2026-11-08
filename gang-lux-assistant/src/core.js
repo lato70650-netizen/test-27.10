@@ -132,14 +132,14 @@ export async function semanticSelect(question,cards,env,fetcher) {
 
 // Owner-only diagnostic: synthetic data only; never returns provider text or credentials.
 export async function diagnoseModel(env, fetcher=fetch) {
-  let httpStatus=null;
+  let httpStatus=null, providerReason=null;
   const dummy=Array.from({length:23},(_,i)=>({id:`test-${i}`,question:`Тестовая карточка ${i}`,aliases:`Пример ${i}`,answer:'Вымышленный текст для технической проверки связи.',topic:'Тест'}));
   try {
-    const result=await semanticSelect('Найди тестовую карточку 7.',dummy,env,async(url,init)=>{const response=await fetcher(url,init);httpStatus=response.status;return response;});
+    const result=await semanticSelect('Найди тестовую карточку 7.',dummy,env,async(url,init)=>{const response=await fetcher(url,init);httpStatus=response.status;if(response.status===429){try{const data=await boundedJSON(response.clone(),16000);const message=String(data?.error?.message || '').toLowerCase();if(/daily|per day|per-day|day limit/.test(message)) providerReason='daily_limit';else if(/rate.limit|rate limit|too many requests|per minute/.test(message)) providerReason='rate_limit';else if(/provider|upstream|temporarily/.test(message)) providerReason='provider_busy';}catch{}}return response;});
     const valid=result && ['answer','clarify','none'].includes(result.action) && Array.isArray(result.ids) && result.ids.every(id=>dummy.some(card=>card.id===id));
     return {ok:Boolean(valid),http_status:httpStatus,reason:valid?'ok':'invalid_format'};
   } catch(error) {
     const reason=error instanceof ServiceError && error.code==='MODEL_NOT_CONFIGURED'?'not_configured':httpStatus && httpStatus!==200?'provider_error':httpStatus===200?'invalid_format':'network_or_timeout';
-    return {ok:false,http_status:httpStatus,reason};
+    return {ok:false,http_status:httpStatus,reason,...(providerReason?{provider_reason:providerReason}:{})};
   }
 }
