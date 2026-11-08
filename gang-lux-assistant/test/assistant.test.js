@@ -4,7 +4,7 @@ import worker, { telegramQuestion, telegramText } from '../src/worker.js';
 import { ask, readCards, semanticSelect, boundedJSON, privateQuestion } from '../src/core.js';
 import { webAccess, telegramAccess, secretEqual } from '../src/auth.js';
 const base={id:'age',question:'Со скольки лет можно учиться?',aliases:'Берёте несовершеннолетних?',answer:'Вымышленное правило: условия уточняет старший администратор.',topic:'Возраст',status:'Утверждено',url:'https://www.notion.so/abc'};
-const env={NOTION_TOKEN:'fake',NOTION_DATA_SOURCE_ID:'fake-source',OPENROUTER_API_KEY:'fake',OPENROUTER_MODEL:'test/model:free',TELEGRAM_WEBHOOK_SECRET:'fake-webhook',TELEGRAM_ALLOWED_IDS:'123',TELEGRAM_BOT_TOKEN:'789:fake'};
+const env={ACCESS_MODE:'legacy',NOTION_TOKEN:'fake',NOTION_DATA_SOURCE_ID:'fake-source',OPENROUTER_API_KEY:'fake',OPENROUTER_MODEL:'test/model:free',TELEGRAM_WEBHOOK_SECRET:'fake-webhook',TELEGRAM_ALLOWED_IDS:'123',TELEGRAM_BOT_TOKEN:'789:fake'};
 const choose=id=>async()=>({action:'answer',ids:[id]});
 const fail=async()=>{throw Error('upstream failure');};
 const page=(answer='Вымышленный ответ',status='Утверждено')=>({id:'age',url:base.url,properties:{'Вопрос':{title:[{plain_text:base.question}]},'Варианты формулировок':{rich_text:[{plain_text:base.aliases}]},'Утверждённый ответ':{rich_text:[{plain_text:answer}]},'Статус':{status:{name:status}},'Тема':{select:{name:'Возраст'}}}});

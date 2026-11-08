@@ -9,6 +9,7 @@
   "vars": {
     "APP_MODE": "production",
     "OPENROUTER_MODEL": "google/gemma-4-26b-a4b-it:free",
+    "TELEGRAM_BOT_USERNAME": "",
     "NOTION_DATA_SOURCE_ID": "",
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",

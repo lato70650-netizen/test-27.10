@@ -31,10 +31,10 @@ form.addEventListener('submit',async e=>{
   const question=previous?previous+'\nУточнение: '+input.value:input.value;
   const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question}),signal:AbortSignal.timeout(45000)});
   const data=await response.json();
-  if(response.status===403)show({text:'Нет доступа. Войдите через Cloudflare Access или обратитесь к владельцу.'});
+  if(response.status===403)show({text:'Нет доступа. Попросите владельца прислать приглашение.'});
   else if(data.kind)show(data);
   else show({text:data.message||'Не удалось выполнить запрос. Попробуйте ещё раз.'});
  }catch{show({kind:'unavailable',text:'Не удалось связаться с помощником. Проверьте соединение и повторите вопрос.'});}
  finally{busy=false;submit.disabled=false;result.removeAttribute('aria-busy');}
 });
-fetch('/api/session').then(r=>{if(!r.ok)throw Error();return r.json();}).then(s=>{document.querySelector('#demo-banner').hidden=!s.demo;}).catch(()=>{show({text:'Сессия недоступна. Войдите через Cloudflare Access и обновите страницу.'});submit.disabled=true;});
+fetch('/api/session').then(r=>{if(!r.ok)throw Error();return r.json();}).then(s=>{document.querySelector('#demo-banner').hidden=!s.demo;}).catch(()=>{show({text:'Доступ закрыт. Попросите владельца прислать приглашение.'});submit.disabled=true;});
