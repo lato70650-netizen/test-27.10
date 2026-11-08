@@ -1,7 +1,7 @@
 import { ask, ServiceError, boundedJSON, apiJSON } from './core.js';
 import { localDemo, webAccess, telegramAccess, secretEqual } from './auth.js';
 import { demoCards, demoSelect } from './demo.js';
-import { sharedToken, validSharedToken, registerTelegram, telegramAllowed } from './shared-access.js';
+import { sharedToken, validSharedToken } from './shared-access.js';
 const headers = { 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer', 'X-Frame-Options':'DENY', 'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" };
 const json = (data,status=200) => Response.json(data,{status,headers});
 async function runQuestion(q,env,demo) {
@@ -24,20 +24,31 @@ async function telegram(request,env) {
  if (!await secretEqual(request.headers.get('X-Telegram-Bot-Api-Secret-Token'),env.TELEGRAM_WEBHOOK_SECRET)) return json({error:'FORBIDDEN'},403);
  const update = await boundedJSON(request,20000);
  const message = update.message;
- if (!message || message.chat?.type !== 'private' || !Number.isSafeInteger(message.from?.id) || message.chat.id !== message.from.id || typeof message.text !== 'string') return json({ok:true});
+ if (!message || !Number.isSafeInteger(message.from?.id) || !Number.isSafeInteger(message.chat?.id) || typeof message.text !== 'string') return json({ok:true});
  if (!env.TELEGRAM_BOT_TOKEN) throw new ServiceError('NOT_CONFIGURED');
- const match = /^\/start\s+([A-Za-z0-9_-]{43})$/.exec(message.text);
- if (match && env.ACCESS_DB) {
-  const accepted = await validSharedToken(match[1],env.ADMIN_SECRET) && await registerTelegram(env.ACCESS_DB,message.from.id,env.ADMIN_SECRET);
-  const sent = await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:message.chat.id,text:accepted?'Доступ открыт. Задайте ваш вопрос.':'Ссылка недействительна. Обратитесь к владельцу.'})});
+ const isGroup = ['group','supergroup'].includes(message.chat.type);
+ const parsedCommand = /^\/(ask|chatid)(?:@([A-Za-z0-9_]+))?(?:\s+|$)/i.exec(message.text);
+ const commandTargetsBot = !parsedCommand?.[2] || (env.TELEGRAM_BOT_USERNAME && parsedCommand[2].toLowerCase() === env.TELEGRAM_BOT_USERNAME.toLowerCase());
+ const setupCommand = commandTargetsBot && parsedCommand?.[1].toLowerCase() === 'chatid';
+ if (isGroup && setupCommand && (!env.TELEGRAM_GROUP_ID || String(message.chat.id) === env.TELEGRAM_GROUP_ID)) {
+  const sent=await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:message.chat.id,text:`ID этой группы: ${message.chat.id}`})});
   if (!sent.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');
   return json({ok:true});
  }
- if (env.ACCESS_DB ? !await telegramAllowed(env.ACCESS_DB,message.from.id,env.ADMIN_SECRET) : !(env.ACCESS_MODE === 'legacy' && telegramAccess(message,env))) return json({ok:true});
+ const groupAllowed = isGroup && /^-\d+$/.test(env.TELEGRAM_GROUP_ID || '') && String(message.chat.id) === env.TELEGRAM_GROUP_ID;
+ const legacyAllowed = env.ACCESS_MODE === 'legacy' && telegramAccess(message,env);
+ if (!groupAllowed && !legacyAllowed) return json({ok:true});
+ if (groupAllowed) {
+  const command=commandTargetsBot && parsedCommand?.[1].toLowerCase() === 'ask' ? parsedCommand : null;
+  const isReply=message.reply_to_message?.from?.id === Number(env.TELEGRAM_BOT_TOKEN.split(':')[0]);
+  if (!command && !isReply) return json({ok:true});
+  if (command) message.text=message.text.slice(command[0].length).trim();
+  if (!message.text) return json({ok:true});
+ }
  let result;
  try { result = await runQuestion(telegramQuestion(message,env),env,false); }
  catch { result = {kind:'unavailable',text:'Справочник временно недоступен. Попробуйте позже или обратитесь к старшему администратору.',sources:[]}; }
- const body = {chat_id:message.chat.id,text:telegramText(result,message.text),link_preview_options:{is_disabled:true},...(result.kind==='clarify'?{reply_markup:{force_reply:true,selective:true}}:{})};
+ const body = {chat_id:message.chat.id,text:telegramText(result,message.text),link_preview_options:{is_disabled:true},...(Number.isSafeInteger(message.message_id)?{reply_parameters:{message_id:message.message_id}}:{}),...(result.kind==='clarify'?{reply_markup:{force_reply:true,selective:true}}:{})};
  // Await send success before ACK so Telegram can retry failures. Duplicate delivery is possible.
  const sent = await apiJSON(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  if (!sent.ok) throw new ServiceError('UPSTREAM_UNAVAILABLE');
@@ -53,19 +64,18 @@ export default {
    if (['/join.js','/manage','/manage.js','/manage.css'].includes(url.pathname) && request.method === 'GET') { const a=await env.ASSETS.fetch(request); const out=new Response(a.body,a); for(const [k,v] of Object.entries(headers)) out.headers.set(k,v); return out; }
    if (url.pathname === '/api/redeem' && request.method === 'POST') {
     if (request.headers.get('Origin') !== url.origin || !request.headers.get('Content-Type')?.startsWith('application/json')) return json({error:'FORBIDDEN'},403);
-    if (!env.ACCESS_DB) return json({error:'NOT_CONFIGURED'},503);
     const data = await boundedJSON(request,2048); const valid = await validSharedToken(data.token,env.ADMIN_SECRET);
     if (!valid) return json({error:'INVALID_LINK'},403);
-    return Response.json({ok:true,telegram_bot_username:env.TELEGRAM_BOT_USERNAME || ''},{headers:{...headers,'Set-Cookie':`__Host-gang_session=${data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=31536000`}});
+    return Response.json({ok:true},{headers:{...headers,'Set-Cookie':`__Host-gang_session=${data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=31536000`}});
    }
    if (url.pathname.startsWith('/admin/')) {
     const bearer=request.headers.get('Authorization') || '';
-    if (!env.ADMIN_SECRET || env.ADMIN_SECRET.length < 32 || !await secretEqual(bearer.startsWith('Bearer ') ? bearer.slice(7) : '',env.ADMIN_SECRET) || !env.ACCESS_DB) return json({error:'FORBIDDEN'},403);
+    if (!env.ADMIN_SECRET || env.ADMIN_SECRET.length < 32 || !await secretEqual(bearer.startsWith('Bearer ') ? bearer.slice(7) : '',env.ADMIN_SECRET)) return json({error:'FORBIDDEN'},403);
     if (request.method === 'GET' && url.pathname === '/admin/shared-link') { const token=await sharedToken(env.ADMIN_SECRET); return token ? json({token}) : json({error:'NOT_CONFIGURED'},503); }
     return json({error:'NOT_FOUND'},404);
    }
    const cookie=(request.headers.get('Cookie') || '').split(';').map(x=>x.trim()).find(x=>x.startsWith('__Host-gang_session='))?.slice('__Host-gang_session='.length);
-   const allowed=env.ACCESS_DB ? await validSharedToken(cookie,env.ADMIN_SECRET) : (env.ACCESS_MODE === 'legacy' && await webAccess(request,env));
+   const allowed=env.ACCESS_MODE === 'legacy' ? await webAccess(request,env) : await validSharedToken(cookie,env.ADMIN_SECRET);
    if (!allowed && !localDemo(request,env)) return json({error:'FORBIDDEN',message:'Доступ только по ссылке школы. Обратитесь к владельцу.'},403);
    if (url.pathname === '/api/session' && request.method === 'GET') return json({demo:localDemo(request,env)});
    if (url.pathname === '/api/ask' && request.method === 'POST') {
