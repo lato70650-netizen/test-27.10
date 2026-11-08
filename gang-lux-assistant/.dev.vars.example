@@ -6,3 +6,6 @@ TELEGRAM_WEBHOOK_SECRET=""
 NOTION_TOKEN=""
 OPENROUTER_API_KEY=""
 WEB_ALLOWED_EMAILS=""
+
+# Owner key for shared link (set only in local secrets or Cloudflare)
+ADMIN_SECRET=""
