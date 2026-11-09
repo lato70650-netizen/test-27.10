@@ -4,6 +4,7 @@
   "main": "src/worker.js",
   "compatibility_date": "2026-11-08",
   "workers_dev": true,
+  "triggers": { "crons": ["*/30 * * * *"] },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

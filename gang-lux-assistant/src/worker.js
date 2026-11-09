@@ -1,4 +1,4 @@
-import { ask, ServiceError, boundedJSON, apiJSON, diagnoseModel } from './core.js';
+import { ask, ServiceError, boundedJSON, apiJSON, diagnoseModel, syncVector } from './core.js';
 import { localDemo, webAccess, telegramAccess, secretEqual } from './auth.js';
 import { demoCards, demoSelect } from './demo.js';
 import { sharedToken, validSharedToken } from './shared-access.js';
@@ -87,6 +87,7 @@ async function telegram(request,env) {
  return json({ok:true});
 }
 export default {
+ async scheduled(_event,env,ctx) { ctx.waitUntil(syncVector(env)); },
  async fetch(request,env) {
   const url = new URL(request.url);
   try {

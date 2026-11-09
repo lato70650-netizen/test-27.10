@@ -94,6 +94,7 @@ export async function ask(question, env, { fetcher = fetch, cards: supplied, sel
   if (privateQuestion(question)) return { kind:'privacy', text:'Задайте общий вопрос без ФИО, телефонов, адресов и других данных учеников.',sources:[] };
   const cards = approved(supplied ?? await readCards(env, fetcher));
   if (!cards.length) return notFound();
+  if (env.VECTOR_URL && env.VECTOR_TOKEN && !select) return vectorAnswer(question,cards,env,fetcher);
   if (cards.length > 40) throw new ServiceError('KNOWLEDGE_LIMIT');
   const ranked = rankCards(question,cards);
   // Small knowledge bases go to semantic selection in full, including weak lexical matches.
@@ -116,6 +117,46 @@ export async function ask(question, env, { fetcher = fetch, cards: supplied, sel
     if (category) return answer(category,true,question);
     return { kind:'unavailable', text:'Сервис поиска временно недоступен. Попробуйте ещё раз или обратитесь к старшему администратору.', sources:[] };
   }
+}
+
+const compactId = s => String(s).replaceAll('-','').toLowerCase();
+const branch = s => /московск/iu.test(s) ? 'moskovsky' : /солнцев|переделкин/iu.test(s) ? 'solntsevo' : null;
+function categoryCode(s) {
+ const m=/(?:кат(?:егори(?:я|ю|и|ей|ям)?|\.?)\s*\.?\s*)([abcemdtавсемт][1]?[eе]?)(?=$|[^\p{L}\p{N}])/iu.exec(s);
+ if(!m)return null;
+ return Array.from(m[1].toLowerCase(),c=>({'а':'a','в':'b','с':'c','е':'e','м':'m','т':'t'}[c]||c)).join('').toUpperCase();
+}
+export async function syncVector(env,fetcher=fetch) {
+ const cards=await readCards(env,fetcher);
+ if (!env.VECTOR_URL || !env.VECTOR_TOKEN) throw new ServiceError('NOT_CONFIGURED');
+ const items=cards.map(c=>({id:compactId(c.id),data:c.question+'\n'+c.aliases,metadata:{page_id:compactId(c.id),index_text:c.question+'\n'+c.aliases}}));
+ if(items.length) await apiJSON(`${env.VECTOR_URL}/upsert-data`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(items)},fetcher);
+}
+export async function vectorAnswer(question,cards,env,fetcher=fetch) {
+ const price=/цен[ауые]|стоимост|стоит|сколько\s+стоит/iu.test(question);
+ const b=branch(question),cat=categoryCode(question);
+ if(!cat && /скольк.{0,8}лет|возраст/iu.test(question) && /учит|обуч|запис|экзамен|сда[тю]/iu.test(question))
+  return {kind:'clarify',text:'Какая категория вас интересует?',sources:[]};
+ if(price && !b && /обуч|курс|прав[аы]|вождени/iu.test(question) && !/теори|документ/iu.test(question))
+  return {kind:'clarify',text:'Какой филиал вас интересует?',sources:[]};
+ let matches;
+ try {
+  const data=await apiJSON(`${env.VECTOR_URL}/query-data`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({data:question,topK:10,includeMetadata:true})},fetcher);
+  if(!Array.isArray(data.result))throw new Error('invalid');
+  matches=data.result;
+ } catch { return {kind:'unavailable',text:'Сервис поиска временно недоступен. Попробуйте ещё раз.',sources:[]}; }
+ for(const match of matches) {
+  if(typeof match.score!=='number' || match.score<0.79)continue;
+  const card=cards.find(c=>compactId(c.id)===compactId(match.id));
+  if(!card)continue;
+  if(match.metadata?.index_text!==card.question+'\n'+card.aliases)continue;
+  const cb=branch(card.question),cc=categoryCode(card.question);
+  if(b && cb && b!==cb)continue;
+  if(cat && cat!==cc)continue;
+  if(price && b && !cb && /обуч|курс|прав[аы]|вождени/iu.test(question))continue;
+  return answer(card,false,question);
+ }
+ return {kind:'unavailable',text:'Не удалось найти точный ответ. Попробуйте задать вопрос по-другому.',sources:[]};
 }
 export async function semanticSelect(question,cards,env,fetcher) {
   if (!env.OPENROUTER_API_KEY || !env.OPENROUTER_MODEL?.endsWith(':free')) throw new ServiceError('MODEL_NOT_CONFIGURED');
