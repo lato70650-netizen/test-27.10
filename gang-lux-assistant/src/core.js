@@ -78,6 +78,10 @@ const notFound = () => ({ kind: 'not_found', text: 'В утверждённом 
 // Keep the owner's short answer for a focused age question about category A.
 // Do not shorten questions that also ask about enrolment, documents or multiple topics.
 export function conciseAnswer(card,question) {
+ const generalDocuments = /документ/iu.test(question) && /нужн|необходим|принести/iu.test(question) && !/иностран|копи|перевод|пропис|регистрац|прав[аы]|категори|договор|снилс|паспорт/iu.test(question);
+ const enrollmentCard = /документ.*(?:оформлен|поступлен)|(?:оформл|поступлен).*документ/iu.test(card.question);
+ if (generalDocuments && enrollmentCard && /паспорт/iu.test(card.answer) && /снилс/iu.test(card.answer))
+  return 'Для оформления нужны паспорт и СНИЛС.';
  const ageQuestion = /скольк|возраст|(?:^|\s)лет(?:\s|[?.!,]|$)/iu.test(question);
  const mixed = /(?:^|\s)(?:и|или)(?:\s|$)|запис|при[её]м|документ|цен|стоимост|расписан/iu.test(question);
  if (ageQuestion && !mixed && /категории\s+A\s*\?$/i.test(card.question)) {
