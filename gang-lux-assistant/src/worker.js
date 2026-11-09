@@ -14,8 +14,13 @@ export function telegramText(result,question) {
  const paragraphs=String(result.text).replace(/([.!?])\s+(?=(?:Когда|На учебную|Для|При|Чтобы|Если|Важно)\s)/gu,'$1\n\n');
  let body=escapeTelegramHtml(paragraphs);
  if (result.kind === 'answer') {
-  body=body.replace(/(?<![\d–-])(\d{1,2}\s+(?:лет|года|год))(?![\p{L}])/gu,'<b>$1</b>');
-  if (/^Экзамен на категорию A\b/i.test(result.text)) body='🏍️ '+body;
+  const important=/(?<![\d–-])(?:\d{1,3}(?:[ \u00a0]\d{3})*(?:[.,]\d+)?[ \u00a0]*(?:₽|руб(?:\.|лей|ля|ль)?)(?![\p{L}])|\d{1,2}[ \u00a0]+(?:лет|года|год)(?![\p{L}])|\d{1,2}[ \u00a0]+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:[ \u00a0]+\d{4})?|\d{1,2}\.\d{1,2}\.\d{4}|\d{1,2}[:.]\d{2}(?!\d)|паспорт и СНИЛС|два(?:х)? экземпляр(?:а|ах))/giu;
+  body=body.replace(important,'<b>$&</b>');
+  if (!/\p{Extended_Pictographic}/u.test(result.text)) {
+   const text=String(result.text), q=String(question||'');
+   const icon=/^Экзамен на категорию A\b/i.test(text)?'🏍️':/документ|паспорт|снилс/iu.test(q)?'📄':/стоимост|цен[ауы]|сколько стоит/iu.test(q)?'💰':/расписан|график|когда занятия/iu.test(q)?'📅':'';
+   if(icon) body=icon+' '+body;
+  }
  }
  const choices=result.kind==='clarify' ? result.sources.map(s=>`• ${escapeTelegramHtml(s.title)}`).join('\n') : '';
  return `${body}${choices?'\n\n'+choices:''}${result.kind==='clarify'?'\n\nВопрос: '+escapeTelegramHtml(question):''}`;
