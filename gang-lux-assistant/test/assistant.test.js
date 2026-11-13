@@ -182,3 +182,9 @@ test('при ограничении провайдера пробует друг
  const result=await semanticSelect('Вопрос',[base],env,async(url,init)=>{const model=JSON.parse(init.body).model;models.push(model);if(models.length===1)return Response.json({error:{message:'provider busy'}},{status:429});return Response.json({choices:[{message:{content:'{"action":"answer","ids":["age"]}'}}]});});
  assert.equal(result.action,'answer');assert.equal(models.length,2);assert.ok(models.every(m=>m.endsWith(':free')));
 });
+
+test('GIBDD document checklist is not shortened to enrolment passport and SNILS',async()=>{
+ const card={...base,id:'gibdd-docs',question:'Какой пакет документов администратор собирает для оформления в ГИБДД?',answer:'Нужны паспорт и СНИЛС, медицинская справка, свидетельство об обучении и подтверждение оплаты госпошлины.'};
+ const result=await ask('Какие документы нужны для оформления в ГИБДД?',env,{cards:[card],select:async()=>({action:'answer',ids:['gibdd-docs']})});
+ assert.equal(result.text,card.answer);
+});

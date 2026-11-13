@@ -20,3 +20,11 @@ test('снятые с публикации или изменённые карт�
  assert.equal((await vectorAnswer('вопрос',[{...a,question:'Изменено'}],env,get(a))).kind,'unavailable');
  assert.equal((await vectorAnswer('вопрос',[],env,get(a))).kind,'unavailable');
 });
+
+test('exact approved alias answers despite low vector similarity, without losing checklist',async()=>{
+ const c={...card('docs','Пакет документов администратора для ГИБДД','Паспорт и СНИЛС, справка, свидетельство, госпошлина.'),aliases:'Какие документы нужны для оформления в ГИБДД?'};
+ const noNetwork=async()=>{throw Error('should not query vector');};
+ assert.equal((await vectorAnswer('какие документы нужны для оформления в гибдд?',[c],env,noNetwork)).text,c.answer);
+ assert.equal((await vectorAnswer(c.aliases,[{...c,status:'Черновик'}],env,async()=>Response.json({result:[]}))).kind,'unavailable');
+ assert.equal((await vectorAnswer(c.aliases,[c,{...c,id:'other'}],env,noNetwork)).kind,'clarify');
+});

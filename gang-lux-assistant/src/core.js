@@ -78,7 +78,7 @@ const notFound = () => ({ kind: 'not_found', text: 'В утверждённом 
 // Keep the owner's short answer for a focused age question about category A.
 // Do not shorten questions that also ask about enrolment, documents or multiple topics.
 export function conciseAnswer(card,question) {
- const generalDocuments = /документ/iu.test(question) && /нужн|необходим|принести/iu.test(question) && !/иностран|копи|перевод|пропис|регистрац|прав[аы]|категори|договор|снилс|паспорт/iu.test(question);
+ const generalDocuments = /документ/iu.test(question) && /нужн|необходим|принести/iu.test(question) && !/гаи|гибдд|экзамен|иностран|копи|перевод|пропис|регистрац|прав[аы]|категори|договор|снилс|паспорт/iu.test(question);
  const enrollmentCard = /документ.*(?:оформлен|поступлен)|(?:оформл|поступлен).*документ/iu.test(card.question);
  if (generalDocuments && enrollmentCard && /паспорт/iu.test(card.answer) && /снилс/iu.test(card.answer))
   return 'Для оформления нужны паспорт и СНИЛС.';
@@ -137,6 +137,10 @@ export async function syncVector(env,fetcher=fetch) {
  if(items.length) await apiJSON(`${env.VECTOR_URL}/upsert-data`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(items)},fetcher);
 }
 export async function vectorAnswer(question,cards,env,fetcher=fetch) {
+ // A unique exact approved question/alias needs no similarity threshold.
+ const exact=rankCards(question,approved(cards)).filter(item=>item.exact);
+ if(exact.length===1) return answer(exact[0].card,false,question);
+ if(exact.length>1) return clarify(exact.map(item=>item.card));
  const price=/цен[ауые]|стоимост|стоит|сколько\s+стоит/iu.test(question);
  const b=branch(question),cat=categoryCode(question);
  if(!cat && /скольк.{0,8}лет|возраст/iu.test(question) && /учит|обуч|запис|экзамен|сда[тю]/iu.test(question))

@@ -5,8 +5,8 @@ const answer=(text,q='вопрос')=>telegramText({kind:'answer',text,sources:[
 test('formats multi-sentence answers without rewriting facts',()=>{
  const text='Подача машины не входит в курс. Первая попытка стоит 1 000 ₽. Пересдача стоит 1 000 ₽.';
  const rendered=answer(text,'Сколько стоит подача машины?');
- assert.match(rendered,/💰 /);assert.match(rendered,/<b>не входит<\/b>/);assert.equal((rendered.match(/<b>1 000 ₽<\/b>/g)||[]).length,2);
- assert.equal(rendered.replace(/^💰 /,'').replace(/<\/?b>/g,'').replace(/\n\n/g,' '),text);
+ assert.match(rendered,/ 💰$/);assert.match(rendered,/<b>не входит<\/b>/);assert.equal((rendered.match(/<b>1 000 ₽<\/b>/g)||[]).length,2);
+ assert.equal(rendered.replace(/ 💰$/,'').replace(/<\/?b>/g,'').replace(/\n\n/g,' '),text);
 });
 test('preserves lists, Notion line breaks, decimals, addresses and initials',()=>{
  const t=answer('Заявление на имя Малинниковой В. М.\n\n• паспорт<br />• СНИЛС\n\nАдрес: Варшавское шоссе, 166, вл. 1. Срок — 2,5 месяца.');
@@ -28,4 +28,12 @@ test('HTML is escaped and error messages do not get celebratory formatting',()=>
  assert.equal(t2,'Сервис недоступен. Попробуйте позже.');
  const clarify=telegramText({kind:'clarify',text:'Уточните категорию',sources:[{title:'A < B'}]},'A & B?');
  assert.match(clarify,/• A &lt; B/);assert.match(clarify,/Вопрос: A &amp; B\?$/);
+});
+
+test('thematic emojis finish the message; only a checkmark can lead it',()=>{
+ assert.equal(answer('Обучение на автомобиле школы.','На какой машине обучение?'),'Обучение на автомобиле школы. 🚘');
+ assert.equal(answer('📄 Соберите документы.','Какие документы?'),'Соберите документы. 📄');
+ assert.equal(answer('Да, можно.','Можно?'),'✅ Да, можно.');
+ assert.equal(answer('✅ Можно.','Можно?'),'✅ Можно.');
+ assert.equal(answer('Документы готовы. 📄','Какие документы?'),'Документы готовы. 📄');
 });

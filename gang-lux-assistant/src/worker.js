@@ -42,9 +42,14 @@ function answerIcon(text,question) {
 export function telegramText(result,question) {
  let body;
  if (result.kind === 'answer') {
-  body=emphasizeTelegram(readableAnswer(result.text));
-  const icon=answerIcon(String(result.text),String(question||''));
-  if(icon) body=icon+' '+body;
+  let text=String(result.text);
+  // Only a checkmark leads the answer; a thematic emoji finishes it.
+  const leading=/^(\p{Extended_Pictographic}[\p{Extended_Pictographic}\uFE0F\u200D]*)[ \t]+/u.exec(text);
+  const moved=leading && !leading[1].startsWith('✅') ? leading[1] : '';
+  if(moved) text=text.slice(leading[0].length);
+  body=emphasizeTelegram(readableAnswer(text));
+  const icon=moved || answerIcon(text,String(question||''));
+  if(icon) body=icon==='✅' ? icon+' '+body : body+' '+icon;
  } else body=escapeTelegramHtml(result.text);
  const choices=result.kind==='clarify' ? result.sources.map(s=>`• ${escapeTelegramHtml(s.title)}`).join('\n') : '';
  return `${body}${choices?'\n\n'+choices:''}${result.kind==='clarify'?'\n\nВопрос: '+escapeTelegramHtml(question):''}`;
