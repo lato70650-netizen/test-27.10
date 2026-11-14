@@ -1,4 +1,4 @@
-import { ask, ServiceError, boundedJSON, apiJSON, diagnoseModel, syncVector } from './core.js';
+import { ask, ServiceError, boundedJSON, apiJSON, diagnoseModel, syncVector, readCards } from './core.js';
 import { localDemo, webAccess, telegramAccess, secretEqual } from './auth.js';
 import { demoCards, demoSelect } from './demo.js';
 import { sharedToken, validSharedToken } from './shared-access.js';
@@ -126,6 +126,22 @@ export default {
   const url = new URL(request.url);
   try {
    if (url.pathname === '/health' && request.method === 'GET') return json({ok:true,search_version:3});
+   if (url.pathname === '/api/manager/search' && request.method === 'POST') {
+    const token = env.MANAGER_SEARCH_TOKEN;
+    const authorization = request.headers.get('Authorization') || '';
+    if (!token || token.length < 32 || !await secretEqual(authorization, 'Bearer ' + token)) return json({error:'FORBIDDEN'},403);
+    if (!request.headers.get('Content-Type')?.startsWith('application/json')) return json({error:'UNSUPPORTED_MEDIA_TYPE'},415);
+    const data = await boundedJSON(request, 8000);
+    if (typeof data?.question !== 'string' || !data.question.trim()) return json({error:'INVALID_QUESTION'},400);
+    const allowedIds = new Set((env.MANAGER_PUBLIC_CARD_IDS || '').split(/[\s,]+/).filter(Boolean).map(id => id.replaceAll('-', '').toLowerCase()));
+    if (!allowedIds.size) return json({kind:'not_found'});
+    const cards = (await readCards(env)).filter(card => allowedIds.has(card.id.replaceAll('-', '').toLowerCase()));
+    if (!cards.length) return json({kind:'not_found'});
+    const result = await ask(data.question, env, {cards});
+    if (result.kind === 'answer' || result.kind === 'clarify') return json({kind:result.kind,text:result.text});
+    if (result.kind === 'privacy') return json({kind:'privacy'});
+    return json({kind:'not_found'});
+   }
    if (url.pathname === '/telegram/webhook' && request.method === 'POST') return await telegram(request,env);
    if (url.pathname === '/join' && request.method === 'GET') return new Response('<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Вход в справочник</title><body><main><h1>Вход в справочник</h1><p id="status">Проверяем приглашение…</p></main><link rel="stylesheet" href="/manage.css"><script src="/join.js" defer></script></body></html>',{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
    if (['/join.js','/manage','/manage.js','/manage.css'].includes(url.pathname) && request.method === 'GET') { const a=await env.ASSETS.fetch(request); const out=new Response(a.body,a); for(const [k,v] of Object.entries(headers)) out.headers.set(k,v); return out; }
