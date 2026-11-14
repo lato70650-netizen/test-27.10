@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { vectorAnswer, vectorItems } from '../src/core.js';
+import { vectorAnswer, vectorItems, syncVector } from '../src/core.js';
 const card=(id,question,answer)=>({id,question,answer,aliases:'',status:'Утверждено'});
 const a=card('a','Какие требования и какой транспорт относятся к категории A?','A');
 const a1=card('a1','Какие требования и какой транспорт относятся к категории A1?','A1');
@@ -49,4 +49,32 @@ test('bare Cyrillic category selects C without mixing D or C1',async()=>{
  const c=card('c','Где проходят занятия на категорию C?','Адрес C');
  const d=card('d','Где проходят занятия на категорию D?','Адрес D');
  assert.equal((await vectorAnswer('А где проходят занятия на С?',[c,d],env,get(d,c))).text,'Адрес C');
+});
+
+test('scheduled sync reads all pages and only embeds changed texts',async()=>{
+ const c={...card('ab-cd','Вопрос','Ответ'),aliases:'Вариант?'};
+ const notion={id:c.id,url:'https://www.notion.so/abcd',properties:{'Вопрос':{title:[{plain_text:c.question}]},'Варианты формулировок':{rich_text:[{plain_text:c.aliases}]},'Утверждённый ответ':{rich_text:[{plain_text:c.answer}]},'Статус':{status:{name:'Утверждено'}}}};
+ const existing=vectorItems([c]);
+ const writes=[],cursors=[];
+ const fetcher=async(url,init)=>{
+  if(url.includes('notion.com'))return Response.json({results:[notion],has_more:false});
+  const body=JSON.parse(init.body);
+  if(url.endsWith('/range')){cursors.push(body.cursor);return Response.json({result:body.cursor==='0'?{vectors:existing.slice(0,1),nextCursor:'next'}:{vectors:existing.slice(1),nextCursor:''}});}
+  if(url.endsWith('/upsert-data')){writes.push(...body);return Response.json({result:'Success'});}
+  assert.fail('unexpected request');
+ };
+ const e={...env,NOTION_TOKEN:'fake',NOTION_DATA_SOURCE_ID:'fake'};
+ await syncVector(e,fetcher);assert.deepEqual(writes,[]);assert.deepEqual(cursors,['0','next']);
+ existing[1]={...existing[1],data:'Old question'};
+ await syncVector(e,fetcher);assert.equal(writes.length,1);assert.equal(writes[0].id,'abcd:variant:0');
+});
+test('failed index read never triggers blind full reindex',async()=>{
+ const e={...env,NOTION_TOKEN:'fake',NOTION_DATA_SOURCE_ID:'fake'};
+ let writes=0;
+ await assert.rejects(syncVector(e,async(url)=>{
+  if(url.includes('notion.com'))return Response.json({results:[],has_more:false});
+  if(url.endsWith('/upsert-data'))writes++;
+  return Response.json({result:{vectors:[],nextCursor:'0'}});
+ }));
+ assert.equal(writes,0);
 });

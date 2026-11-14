@@ -143,7 +143,21 @@ export function vectorItems(cards) {
 export async function syncVector(env,fetcher=fetch) {
  const cards=await readCards(env,fetcher);
  if (!env.VECTOR_URL || !env.VECTOR_TOKEN) throw new ServiceError('NOT_CONFIGURED');
- const items=vectorItems(cards);
+ const desired=vectorItems(cards), current=new Map();
+ let cursor='0',pages=0;
+ do {
+  const data=await apiJSON(`${env.VECTOR_URL}/range`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({cursor,limit:200,includeMetadata:true,includeData:true})},fetcher);
+  if(!Array.isArray(data.result?.vectors) || typeof data.result.nextCursor!=='string') throw new ServiceError('INVALID_RESPONSE');
+  for(const item of data.result.vectors) current.set(String(item.id),item);
+  const next=data.result.nextCursor;
+  if(next && (next===cursor || ++pages>100)) throw new ServiceError('KNOWLEDGE_LIMIT');
+  cursor=next;
+ } while(cursor);
+ // Re-embed only changed/new texts, keeping the 30-minute sync inexpensive.
+ const items=desired.filter(item=>{
+  const old=current.get(item.id);
+  return !old || old.data!==item.data || old.metadata?.page_id!==item.metadata.page_id || old.metadata?.index_text!==item.metadata.index_text;
+ });
  for(let at=0;at<items.length;at+=100) {
   await apiJSON(`${env.VECTOR_URL}/upsert-data`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(items.slice(at,at+100))},fetcher);
  }
