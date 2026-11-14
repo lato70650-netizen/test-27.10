@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { vectorAnswer } from '../src/core.js';
+import { vectorAnswer, vectorItems } from '../src/core.js';
 const card=(id,question,answer)=>({id,question,answer,aliases:'',status:'Утверждено'});
 const a=card('a','Какие требования и какой транспорт относятся к категории A?','A');
 const a1=card('a1','Какие требования и какой транспорт относятся к категории A1?','A1');
@@ -27,4 +27,26 @@ test('exact approved alias answers despite low vector similarity, without losing
  assert.equal((await vectorAnswer('какие документы нужны для оформления в гибдд?',[c],env,noNetwork)).text,c.answer);
  assert.equal((await vectorAnswer(c.aliases,[{...c,status:'Черновик'}],env,async()=>Response.json({result:[]}))).kind,'unavailable');
  assert.equal((await vectorAnswer(c.aliases,[c,{...c,id:'other'}],env,noNetwork)).kind,'clarify');
+});
+
+test('independent phrasing vectors resolve to current approved page and deduplicate',async()=>{
+ const c={...card('ab-cd','Сколько длится обучение в автошколе?','2,5–3 месяца'),aliases:'Как долго учиться?; Как долго учиться?'};
+ const items=vectorItems([c]);assert.equal(items.length,3);assert.equal(items[1].metadata.page_id,'abcd');
+ assert.equal(items[2].data,'Как долго учиться?');
+ const response=async()=>Response.json({result:[{id:items[2].id,score:0.9,metadata:items[2].metadata},{id:items[1].id,score:0.89,metadata:items[1].metadata}]});
+ assert.equal((await vectorAnswer('За какое время я пройду обучение?',[c],env,response)).text,c.answer);
+ assert.equal((await vectorAnswer('За какое время я пройду обучение?',[{...c,aliases:'Изменено'}],env,response)).kind,'unavailable');
+ assert.deepEqual(vectorItems([{...c,status:'Черновик'}]),[]);
+});
+test('general duration never chooses an arbitrary category and close different answers clarify',async()=>{
+ const specific=card('d','Сколько длится обучение на категорию D?','3 месяца');
+ const general=card('all','Сколько длится обучение в автошколе?','2,5–3 месяца');
+ assert.equal((await vectorAnswer('Как долго длится обучение?',[specific,general],env,get(specific,general))).text,general.answer);
+ const x=card('x','Первая тема','Первый ответ'),y=card('y','Вторая тема','Второй ответ');
+ assert.equal((await vectorAnswer('Неоднозначный вопрос',[x,y],env,get(x,y))).kind,'clarify');
+});
+test('bare Cyrillic category selects C without mixing D or C1',async()=>{
+ const c=card('c','Где проходят занятия на категорию C?','Адрес C');
+ const d=card('d','Где проходят занятия на категорию D?','Адрес D');
+ assert.equal((await vectorAnswer('А где проходят занятия на С?',[c,d],env,get(d,c))).text,'Адрес C');
 });

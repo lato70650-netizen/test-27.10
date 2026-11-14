@@ -126,15 +126,27 @@ export async function ask(question, env, { fetcher = fetch, cards: supplied, sel
 const compactId = s => String(s).replaceAll('-','').toLowerCase();
 const branch = s => /московск/iu.test(s) ? 'moskovsky' : /солнцев|переделкин/iu.test(s) ? 'solntsevo' : null;
 function categoryCode(s) {
- const m=/(?:кат(?:егори(?:я|ю|и|ей|ям)?|\.?)\s*\.?\s*)([abcemdtавсемт][1]?[eе]?)(?=$|[^\p{L}\p{N}])/iu.exec(s);
+ const m=/(?:кат(?:егори(?:я|ю|и|ей|ям)?|\.?)\s*\.?\s*)([abcemdtавсемт][1]?[eе]?)(?=$|[^\p{L}\p{N}])/iu.exec(s) || /(?:^|\s)(?:на|для)\s+([abcemdtавсемт][1]?[eе]?)(?=$|[^\p{L}\p{N}])/iu.exec(s);
  if(!m)return null;
  return Array.from(m[1].toLowerCase(),c=>({'а':'a','в':'b','с':'c','е':'e','м':'m','т':'t'}[c]||c)).join('').toUpperCase();
+}
+// Keep a primary record for compatibility and independent embeddings for each
+// phrasing. Every record carries the same current-card fingerprint.
+export function vectorItems(cards) {
+ return approved(cards).flatMap(c=>{
+  const id=compactId(c.id), index_text=c.question+'\n'+(c.aliases||'');
+  const metadata={page_id:id,index_text};
+  const variants=[...new Set([c.question,...(c.aliases||'').split(/[;\n]/)].map(s=>s.trim()).filter(Boolean))];
+  return [{id,data:index_text,metadata},...variants.map((data,i)=>({id:id+':variant:'+i,data,metadata}))];
+ });
 }
 export async function syncVector(env,fetcher=fetch) {
  const cards=await readCards(env,fetcher);
  if (!env.VECTOR_URL || !env.VECTOR_TOKEN) throw new ServiceError('NOT_CONFIGURED');
- const items=cards.map(c=>({id:compactId(c.id),data:c.question+'\n'+c.aliases,metadata:{page_id:compactId(c.id),index_text:c.question+'\n'+c.aliases}}));
- if(items.length) await apiJSON(`${env.VECTOR_URL}/upsert-data`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(items)},fetcher);
+ const items=vectorItems(cards);
+ for(let at=0;at<items.length;at+=100) {
+  await apiJSON(`${env.VECTOR_URL}/upsert-data`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify(items.slice(at,at+100))},fetcher);
+ }
 }
 export async function vectorAnswer(question,cards,env,fetcher=fetch) {
  // A unique exact approved question/alias needs no similarity threshold.
@@ -149,21 +161,26 @@ export async function vectorAnswer(question,cards,env,fetcher=fetch) {
   return {kind:'clarify',text:'Какой филиал вас интересует?',sources:[]};
  let matches;
  try {
-  const data=await apiJSON(`${env.VECTOR_URL}/query-data`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({data:question,topK:10,includeMetadata:true})},fetcher);
+  const data=await apiJSON(`${env.VECTOR_URL}/query-data`,{method:'POST',headers:{Authorization:`Bearer ${env.VECTOR_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({data:question,topK:40,includeMetadata:true})},fetcher);
   if(!Array.isArray(data.result))throw new Error('invalid');
   matches=data.result;
  } catch { return {kind:'unavailable',text:'Сервис поиска временно недоступен. Попробуйте ещё раз.',sources:[]}; }
+ const generalDuration=!price && !cat && /скольк|долго|срок|длитель|врем/iu.test(question) && /обуч|учит|курс/iu.test(question) && !/занят|урок|вождени|теори/iu.test(question);
+ const candidates=[];
  for(const match of matches) {
   if(typeof match.score!=='number' || match.score<0.79)continue;
-  const card=cards.find(c=>compactId(c.id)===compactId(match.id));
+  const card=cards.find(c=>compactId(c.id)===compactId(match.metadata?.page_id || match.id));
   if(!card)continue;
   if(match.metadata?.index_text!==card.question+'\n'+card.aliases)continue;
   const cb=branch(card.question),cc=categoryCode(card.question);
+  if(generalDuration && cc)continue;
   if(b && cb && b!==cb)continue;
   if(cat && cat!==cc)continue;
   if(price && b && !cb && /обуч|курс|прав[аы]|вождени/iu.test(question))continue;
-  return answer(card,false,question);
+  if(!candidates.some(x=>x.card.id===card.id)) candidates.push({card,score:match.score});
  }
+ if(candidates.length>1 && candidates[0].score-candidates[1].score<0.015) return clarify(candidates.map(x=>x.card));
+ if(candidates.length) return answer(candidates[0].card,false,question);
  return {kind:'unavailable',text:'Не удалось найти точный ответ. Попробуйте задать вопрос по-другому.',sources:[]};
 }
 export async function semanticSelect(question,cards,env,fetcher) {

@@ -125,7 +125,7 @@ export default {
  async fetch(request,env) {
   const url = new URL(request.url);
   try {
-   if (url.pathname === '/health' && request.method === 'GET') return json({ok:true});
+   if (url.pathname === '/health' && request.method === 'GET') return json({ok:true,search_version:2});
    if (url.pathname === '/telegram/webhook' && request.method === 'POST') return await telegram(request,env);
    if (url.pathname === '/join' && request.method === 'GET') return new Response('<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Вход в справочник</title><body><main><h1>Вход в справочник</h1><p id="status">Проверяем приглашение…</p></main><link rel="stylesheet" href="/manage.css"><script src="/join.js" defer></script></body></html>',{headers:{...headers,'Content-Type':'text/html; charset=utf-8'}});
    if (['/join.js','/manage','/manage.js','/manage.css'].includes(url.pathname) && request.method === 'GET') { const a=await env.ASSETS.fetch(request); const out=new Response(a.body,a); for(const [k,v] of Object.entries(headers)) out.headers.set(k,v); return out; }
